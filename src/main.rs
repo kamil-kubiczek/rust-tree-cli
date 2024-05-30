@@ -1,10 +1,10 @@
-// todo
-// 1. scan dirs
-// 2. scan files
-// 3. loop with depth through files
-// 4. display as tree in cli
-
-use std::{borrow::Borrow, ffi::OsString, fs, path::Path};
+use std::{
+    borrow::Borrow,
+    ffi::{OsStr, OsString},
+    fs,
+    path::Path,
+    vec,
+};
 
 #[derive(Debug)]
 struct FileTree {
@@ -21,7 +21,7 @@ impl FileTree {
 
 #[derive(Debug)]
 struct Directory {
-    name: Box<OsString>,
+    name: OsString,
     directories: Option<Vec<Directory>>,
     files: Option<Vec<OsString>>,
 }
@@ -29,18 +29,19 @@ struct Directory {
 impl Directory {
     fn display_directory(dirs: &Directory, depth: i32) {
         let mut dirs_spacing = String::from("");
-        for _ in 1..depth {
-            dirs_spacing += "-";
+        for _ in 0..depth {
+            dirs_spacing.insert_str(0, "───");
         }
 
-        let mut files_spacing = String::from("");
-        for _ in 1..depth {
-            files_spacing += "   ";
+        let mut tabs_spacing = String::from("");
+
+        for _ in 0..depth {
+            tabs_spacing.push_str("   ")
         }
 
         println!(
-            "{} {}",
-            dirs_spacing,
+            "{}└──{}",
+            tabs_spacing,
             dirs.name
                 .clone()
                 .into_string()
@@ -52,8 +53,8 @@ impl Directory {
         if let Some(files) = dirs.files.borrow() {
             for file in files {
                 println!(
-                    "{} |{}",
-                    files_spacing,
+                    "{}└──{}",
+                    tabs_spacing,
                     file.clone()
                         .into_string()
                         .unwrap()
@@ -81,8 +82,22 @@ fn main() {
 fn create_tree(path: &Path) -> FileTree {
     let mut tree = FileTree { dirs: vec![] };
 
+    // parent dir
+    tree.dirs.push(Directory {
+        name: path
+            .file_name()
+            .unwrap_or(OsStr::new("Error when reading root"))
+            .to_owned(),
+        directories: Some(vec![]),
+        files: Some(vec![]),
+    });
+
     if let Some(dirs) = find_directories(path) {
-        tree.dirs = dirs;
+        tree.dirs[0].directories = Some(dirs);
+    }
+
+    if let Some(files) = find_files(path) {
+        tree.dirs[0].files = Some(files);
     }
 
     tree
@@ -91,16 +106,6 @@ fn create_tree(path: &Path) -> FileTree {
 fn find_directories(path: &Path) -> Option<Vec<Directory>> {
     if let Ok(entries) = fs::read_dir(path) {
         let mut directories: Vec<Directory> = vec![];
-
-        directories.push(Directory {
-            name: Box::new(
-                path.file_name()
-                    .unwrap_or(OsString::from(".").as_os_str())
-                    .to_os_string(),
-            ),
-            directories: None,
-            files: None,
-        });
 
         for entry in entries {
             match entry {
@@ -116,19 +121,10 @@ fn find_directories(path: &Path) -> Option<Vec<Directory>> {
                         let files = find_files(&entry_path)?;
 
                         directories.push(Directory {
-                            name: Box::new(entry_path.file_name().unwrap().to_owned()),
+                            name: entry_path.file_name().unwrap().to_owned(),
                             directories: Some(nested_directories),
                             files: Some(files),
-                        })
-                    } else if entry_path.is_file() {
-                        if let Some(files) = directories[0].files.as_mut() {
-                            files.push(entry_path.file_name().unwrap().to_os_string());
-                        } else {
-                            let last_index = directories.len() - 1;
-                            if let Some(files) = directories[last_index].files.as_mut() {
-                                files.push(entry_path.file_name().unwrap().to_os_string());
-                            }
-                        }
+                        });
                     }
                 }
             }
@@ -151,7 +147,7 @@ fn find_files(path: &Path) -> Option<Vec<OsString>> {
                             files.push(dir.path().file_name().unwrap().to_os_string())
                         }
                     }
-                    Err(e) => println!("Error when finding folders in path {:?}", e),
+                    Err(e) => println!("Error when finding files in path {:?}", e),
                 }
             }
         }
